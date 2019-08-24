@@ -4,6 +4,7 @@ import scipy.io as scio
 import numpy as np
 import matplotlib.pyplot as plt
 import random as random 
+import copy
 from math import sqrt
 
 ## Node
@@ -33,7 +34,7 @@ class RRT_Core(object):
         self.map_ = map
         self.check_interval_ = 5.0
         self.nodes_ = []
-        self.max_single_len_ = 30.0
+        # self.max_single_len_ = 30.0
 
     # calculate Euclid distance between two points
     def calcDistance(self, node1, node2):
@@ -75,33 +76,11 @@ class RRT_Core(object):
                 min_dist = dist
                 min_id = i 
         node_nearest = Node()
-        node_nearest = self.nodes_[node_nearest]
+        if (min_id < 0 or min_id >= len(self.nodes_)):
+            print("Tree is empty, can`t find nearest node!")
+            return node_nearest 
+        node_nearest = self.nodes_[min_id]
         return node_nearest
-
-    # find new node according to rand node and nearest node
-    def steer(self, node_rand, node_nearest):
-        node_new = Node()
-        if node_nearest.id_ == -1 or node_nearest.id_ >= len(self.nodes_):
-            print("can`t find nearest node!")
-            return node_new 
-        direction = (node_rand.position_ - node_nearest.position_)
-        length = np.linalg.norm(direction)
-        length_threshold = 1.0
-        if length < length_threshold:
-            print("node rand is too close to existed nodes, abandon it.")
-            return node_new 
-        direction = direction / length 
-        curr_position = np.array([-1, -1])
-        if length > self.max_single_len_:
-            curr_position = node_nearest.position_ + direction * self.max_single_len_
-        else:
-            curr_position = node_rand.position_ 
-        curr_position = curr_position.astype(int)
-        if self.checkEdgeInFreespace(self.nodes_[nearest_id].position_, curr_position) == True:
-            node_new.parent_ = nearest_id
-            node_new.position_ = curr_position 
-
-        return node_new 
 
     # sample to get rand node
     def sample(self):
@@ -117,11 +96,12 @@ class RRT_Core(object):
     def addNewNode(self, node_new):
         # verify if node is valid
         if (node_new.parent_ < 0 or node_new.parent_ >= len(self.nodes_)):
-            print("node node is invalid!, reject to add into tree")
+            print("node is invalid!, reject to add into tree")
             return False  
         # add into rrt
         node_new.id_ = len(self.nodes_)
-        self.nodes_[node_new.parent_].append(node_new.id_)
+        self.nodes_[node_new.parent_].chidren_.append(node_new.id_)
+        print("node is added into tree sucessfully")
         return True 
 
 if __name__ == '__main__':
