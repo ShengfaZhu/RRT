@@ -14,9 +14,11 @@ class RRT_Connect(object):
         # initilization start and goal tree
         self.start_tree_ = []
         self.goal_tree_ = []
+        self.start_position_ = start_position
+        self.goal_position_ = goal_position 
         # expand parameters
         self.prob_select_goal_ = 0.2
-        self.max_iter_ = 200
+        self.max_iter_ = 500
         self.check_interval_ = 5.0
         self.prob_round_ = 4
         self.path_ =[]
@@ -25,11 +27,13 @@ class RRT_Connect(object):
         # put start and goal node into trees
         start = Node()
         start.id_ = 0
-        start.position_ = start_position
+        start.position_ = np.array(start_position)
+        start.parent_ = -1
         self.start_tree_.append(start)
         goal = Node()
         goal.id_ = 0
-        goal.position_ = goal_position 
+        goal.parent_ = -1
+        goal.position_ = np.array(goal_position) 
         self.goal_tree_.append(goal)
     
     # sample randomly to get rand node
@@ -39,8 +43,13 @@ class RRT_Connect(object):
         n_row, n_col = self.map_.shape
         postion_rand = np.array([random.randint(0, n_row - 1), \
                 random.randint(0, n_col - 1)])
-        node_rand.position_ = postion_rand
+        node_rand.position_ = postion_rand.astype(int)
         return node_rand
+
+    # calculate distance between two nodes
+    def calcDistance(self, node1, node2):
+        # Eucilid distance between two nodes
+        return np.linalg.norm(node1.position_ - node2.position_)
 
     # find nestest node according to distance
     def findNearestNode(self, node, node_list):
@@ -51,21 +60,24 @@ class RRT_Connect(object):
             if dist < min_dist:
                 min_dist = dist
                 node_nearest = tmp_node
+        if (node_nearest.id_ == -1):
+            print("bug! cannot find nearest node!")
         return node_nearest
 
     # steer from node_nearest to node_rand
     def steer(self, node_nearest, node_rand):
+        node_new = Node()
+        node_new.parent_ = node_nearest.id_ 
         direction = node_rand.position_ - node_nearest.position_ 
         length = np.linalg.norm(direction)
         # if length is less than max_single_len, just return rand node 
         if (length <= self.max_single_len_):
-            node_rand.parent_ = node_nearest.id_ 
-            return node_rand
+            # print("length less than max length")
+            node_new.position_ = node_rand.position_
+            return node_new
         # trim node to max_single_len
         direction = direction / length
         position = node_nearest.position_ + self.max_single_len_ * direction
-        node_new = Node()
-        node_new.parent_ = node_nearest.id_
         node_new.position_ = position.astype(int)
         return node_new 
 
@@ -91,18 +103,19 @@ class RRT_Connect(object):
     def addNewNode(self, node_new, node_list):
         # verify if node is valid
         if (node_new.parent_ < 0 or node_new.parent_ >= len(node_list)):
-            print("node is invalid!, reject to add into tree")
+            print("node parent is ", node_new.parent_, ", node is invalid!, reject to add into tree")
             return False  
         # add into rrt
         node_new.id_ = len(node_list)
-        self.nodes_[node_new.parent_].chidren_.append(node_new.id_)
-        print("node is added into tree sucessfully")
+        node_list.append(node_new)
+        node_list[node_new.parent_].chidren_.append(node_new.id_)
         return True 
 
     # build Rapidly random exploring tree 
     def buildTree(self):
         print("start build rapidly random exploring tree...")
         for i in range(self.max_iter_):
+            print(i, "th iteration")
             node_rand = self.sample()
             node_nearest = self.findNearestNode(node_rand, self.start_tree_)
             node_new = self.steer(node_nearest, node_rand)
@@ -111,20 +124,20 @@ class RRT_Connect(object):
                 self.addNewNode(node_new, self.start_tree_)
                 node_nearest_1 = self.findNearestNode(node_new, self.goal_tree_)
                 node_new_1 = self.steer(node_nearest_1, node_new) 
-                if (self.checkEdgeInFreespace(node_new_1.position_, node_nearest_1.position_)) \
-                        == True:
+                if (self.checkEdgeInFreespace(node_new_1.position_, node_nearest_1.position_)) == True:
                     self.addNewNode(node_new_1, self.goal_tree_)
                     while (node_new != node_new_1):
-                        node_new = self.steer(node_new_1, node_new)
-                        if (self.checkEdgeInFreespace(node_new.position_, node_new_1.position_)) == True:
-                            self.addNewNode(node_new, self.goal_tree_)
-                            node_new_1 = node_new 
+                        node_new_2 = self.steer(node_new_1, node_new)
+                        if (self.checkEdgeInFreespace(node_new.position_, node_new_2.position_)) == True:
+                            self.addNewNode(node_new_2, self.goal_tree_)
+                            node_new_1 = node_new_2 
                         else:
                             break
                     if node_new == node_new_1:
                         self.find_feasible_path_ = True 
+                        print("RRT find path from start to goal")
                         return
-            if (len(self.start_tree_.nodes_) < len(self.goal_tree_.nodes_)):
+            if (len(self.start_tree_) > len(self.goal_tree_)):
                 self.start_tree_, self.goal_tree_ = self.goal_tree_, self.start_tree_
         print("rapidly random exploring tree built!!!")
 
@@ -133,15 +146,21 @@ class RRT_Connect(object):
         if self.find_feasible_path_ == False: 
             print("no feasible path found, maybe need more iterations")
             return 
-        # put goal index into feasible path 
-        self.path_.append(len(self.nodes_) - 1)
-        parent_id = self.nodes_[-1].parent_ 
-        while parent_id != 0:
+        # put index of start tree into path 
+        self.path_.append(len(self.start_tree_) - 1)
+        parent_id = self.start_tree_[-1].parent_ 
+        while parent_id >= 0 and parent_id < len(self.start_tree_):
             self.path_.append(parent_id)
-            parent_id = self.nodes_[parent_id].parent_ 
+            parent_id = self.start_tree_[parent_id].parent_ 
         # put root index into feasible path
-        self.path_.append(0)
         self.path_.reverse()
+        # put index of goal tree into path
+        self.path_.append(len(self.goal_tree_) - 1)
+        parent_id = self.goal_tree_[-1].parent_
+        while parent_id >= 0 and parent_id < len(self.goal_tree_):
+            self.path_.append(parent_id)
+            parent_id = self.goal_tree_[parent_id].parent_ 
+        
 
     # draw Rapidly random exploring tree
     def drawRRT(self):
@@ -149,44 +168,62 @@ class RRT_Connect(object):
         plt.ion()
         plt.matshow(self.map_, cmap = "gray_r")
         # draw start and goal point
-        # plt.scatter(self.start_position_[1], self.start_position_[0], marker = 'o')
-        # plt.scatter(self.goal_position_[1], self.goal_position_[0], marker = 'o')
+        plt.scatter(self.start_position_[1], self.start_position_[0], marker = 'o')
+        plt.scatter(self.goal_position_[1], self.goal_position_[0], marker = 'o')
         # draw RRT 
         # draw start tree 
         for node in self.start_tree_:
             for child in node.chidren_:
-                if child < 0 or child > len(self.start_tree_):
+                if child < 0 or child >= len(self.start_tree_):
                     # TODO raise error to show bug
                     print("child < 0 or child > len(nodes_)")
                     return 
-                x = [node.position_[0], self.nodes_[child].position_[0]]
-                y = [node.position_[1], self.nodes_[child].position_[1]]
+                x = [node.position_[0], self.start_tree_[child].position_[0]]
+                y = [node.position_[1], self.start_tree_[child].position_[1]]
                 plt.pause(0.002)
                 plt.plot(y, x, color = 'r')
                 plt.draw()
         # draw goal tree
         for node in self.goal_tree_:
             for child in node.chidren_:
-                if child < 0 or child > len(self.goal_tree_):
+                if child < 0 or child >= len(self.goal_tree_):
                     # TODO raise error to show bug
                     print("child < 0 or child > len(nodes_)")
                     return 
-                x = [node.position_[0], self.nodes_[child].position_[0]]
-                y = [node.position_[1], self.nodes_[child].position_[1]]
+                x = [node.position_[0], self.goal_tree_[child].position_[0]]
+                y = [node.position_[1], self.goal_tree_[child].position_[1]]
                 plt.pause(0.002)
                 plt.plot(y, x, color = 'r')
                 plt.draw()
 
         # draw feasible path
         # self.findPath()
-        # for i in range(len(self.path_) - 1):
-            # x = [self.nodes_[self.path_[i]].position_[0], \
-                    # self.nodes_[self.path_[i + 1]].position_[0]]
-            # y = [self.nodes_[self.path_[i]].position_[1], \
-                    # self.nodes_[self.path_[i + 1]].position_[1]]
-            # plt.pause(0.05)
-            # plt.plot(y, x, color = 'k')
-        # plt.draw()
+        if self.find_feasible_path_ == True:
+            child_id = len(self.start_tree_) - 1
+            parent_id = self.start_tree_[child_id].parent_
+            while parent_id != -1:
+                x = [self.start_tree_[parent_id].position_[0], \
+                        self.start_tree_[child_id].position_[0]]
+                y = [self.start_tree_[parent_id].position_[1], \
+                        self.start_tree_[child_id].position_[1]]
+                child_id = parent_id
+                parent_id = self.start_tree_[child_id].parent_
+                plt.pause(0.02)
+                plt.plot(y, x, color = 'k')
+            child_id = len(self.goal_tree_) - 1
+            parent_id = self.goal_tree_[child_id].parent_
+            while parent_id != -1:
+                x = [self.goal_tree_[parent_id].position_[0], \
+                        self.goal_tree_[child_id].position_[0]]
+                y = [self.goal_tree_[parent_id].position_[1], \
+                        self.goal_tree_[child_id].position_[1]]
+                child_id = parent_id
+                parent_id = self.goal_tree_[child_id].parent_
+                plt.pause(0.02)
+                plt.plot(y, x, color = 'k')
+        else:
+            print("No feasible path found, maybe need more iteration.")
+        plt.draw()
         plt.ioff()
         plt.show()
 
@@ -197,6 +234,16 @@ if __name__ == '__main__':
     data = data['map']
     start_position = (70, 80)
     goal_position = (615, 707)
+    # start_node = Node()
+    # start_node.position_ = np.array(start_position)
+    # start_position_2 = (74, 80)
+    # start_node_2 = Node()
+    # start_node_2.position_ = np.array(start_position_2)
+    # if (start_node != start_node_2):
+        # print("start node is not equal start node 2")
+    # else:
+        # print("start node is equal start node 2")
+
     rrt_connect = RRT_Connect(data, start_position, goal_position)
     rrt_connect.buildTree()
-    # rrt_connect.drawRRT()
+    rrt_connect.drawRRT()

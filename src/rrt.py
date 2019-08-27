@@ -5,23 +5,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import random as random 
 from math import sqrt
+from rrt_node import Node
 
-## Node
-class Node(object):
-    def __init__(self):
-        self.id_ = -1
-        self.position_ = np.array([-1.0, -1.0], dtype = int)
-        self.parent_ = -1
-        self.chidren_ = []
-
-    def __eq__(self, rhs):
-        distance_threshold = 1.0
-        if np.linalg.norm(self.position_ - rhs.position_) <= distance_threshold:
-            return True
-        else:
-            return False
-
-class RRT_Core(object):
+class RRT(object):
     # initilization
     def __init__(self, map, start_position, goal_position):
         self.map_ = map
@@ -140,6 +126,7 @@ class RRT_Core(object):
         goal.position_ = self.goal_position_
 
         for i in range(self.max_iter_):
+            print(i, "th iteration")
             node_rand = self.sample()
             node_new = self.findNewNode(node_rand)
             if node_new.parent_ < 0 or node_new.parent_ >= len(self.nodes_):
@@ -214,7 +201,7 @@ if __name__ == '__main__':
     print(data.shape)
     start_position = (70, 80)
     goal_position = (615, 707)
-    rrt = RRT_Core(data, start_position, goal_position)
+    rrt = RRT(data, start_position, goal_position)
     # p1 = np.array([487, 357])
     # p2 = np.array([615, 707])
     # print(rrt.checkEdgeInFreespace(p1, p2))
